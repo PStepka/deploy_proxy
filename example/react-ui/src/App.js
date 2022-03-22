@@ -6,6 +6,7 @@ import {
   NotificationManager
 } from "react-notifications";
 import "react-notifications/lib/notifications.css";
+import Torus from "@toruslabs/torus-embed";
 import Biconomy from "@biconomy/mexa";
 
 import Web3 from "web3";
@@ -28,78 +29,47 @@ function App() {
   useEffect(() => {
     async function init() {
       if (
-        typeof window.ethereum !== "undefined" &&
-        window.ethereum.isMetaMask
+          typeof window.ethereum !== "undefined" &&
+          window.ethereum.isMetaMask
       ) {
         // Ethereum user detected. You can now use the provider.
-        const provider = window["ethereum"];
-        await provider.enable();
-        if (provider.networkVersion === "42") {
-          const biconomy = new Biconomy(provider,{apiKey: "8nvA_lM_Q.0424c54e-b4b2-4550-98c5-8b437d3118a9"});
-          web3 = new Web3(biconomy);
-          // web3 = new Web3(provider);
-          biconomy.onEvent(biconomy.READY, () => {
-            // Initialize your dapp here like getting user accounts etc
-            contract = new web3.eth.Contract(
-              config.contract.abi,
-              config.contract.address
-            );
-            gnosisFactory = new web3.eth.Contract(
-              config.gnosis.proxyFactory.abi,
-              config.gnosis.proxyFactory.address
-            );
-            gnosisSafeMaster = new web3.eth.Contract(
-              config.gnosis.safeMasterCopy.abi,
-              config.gnosis.safeMasterCopy.address
-            );
-            let proxyAddress = getLocalStorage(PROXY_ADDRESS);
-            if(proxyAddress) {
-              proxyWallet = new web3.eth.Contract(
-                config.gnosis.safeMasterCopy.abi,
-                proxyAddress
-              );
-              setWalletAddress(proxyAddress);
-            }
+        // const provider = window["ethereum"];
+        // await provider.enable();
 
-            setSelectedAddress(provider.selectedAddress);
-            getQuoteFromNetwork();
-            provider.on("accountsChanged", function(accounts) {
-              setSelectedAddress(accounts[0]);
-            });
-            // Whiltelist our DApp smart contract
-            let data = {
-              destinationAddresses : [
-                config.contract.address.toLowerCase()
-              ]
-            }
-            fetch("https://api.biconomy.io/api/v1/dapp/whitelist/destination", {
-              method: "POST",
-              body: JSON.stringify(data),
-              headers: {
-                "Authorization" : "User b99b1ecb-7d57-487f-a46d-d6aafef0be1a",
-                'Content-Type': 'application/json;charset=utf-8'
-              }
-            }).then(response => {
-              if(response.ok) {
-                return response.json();
-              } else {
-                showErrorMessage("Whilelisting contract address failed");
-              }
-            }).then(response => {
-              console.log(response);
-              showSuccessMessage("Dapp whitelisted successfully");
-            });
+        const torus = new Torus();
+        await torus.init();
+        await torus.login(); // await torus.ethereum.enable()
+        web3 = new Web3(torus.provider);
 
-          }).onEvent(biconomy.ERROR, (error, message) => {
-            // Handle error while initializing mexa
-            console.log(error);
-            showErrorMessage("Error while initializing biconomy");
-          });
-        } else {
-          showErrorMessage("Please change the network in metamask to Kovan");
-        }
-      } else {
-        showErrorMessage("Metamask not installed");
+        const userInfo = await torus.getUserInfo();
+        console.log('userInfo: ', userInfo);
+
+        torus.showTorusButton();
+
+        const userAddress = (await web3.eth.getAccounts())[0];
+        console.log('userAddress: ', userAddress);
+
+        gnosisFactory = new web3.eth.Contract(
+            config.gnosis.proxyFactory.abi,
+            config.gnosis.proxyFactory.address
+        );
+        gnosisSafeMaster = new web3.eth.Contract(
+            config.gnosis.safeMasterCopy.abi,
+            config.gnosis.safeMasterCopy.address
+        );
+        let transaction = createWallet(gnosisFactory, gnosisSafeMaster, userAddress);
+        console.log(transaction);
+        transaction.on("transactionHash", (hash) => {
+          console.log("Transaction Hash", hash);
+          showInfoMessage("Wallet creation transaction sent to blockchain");
+        }).once("confirmation", async function (confirmationNumber, receipt) {
+          console.log("Transaction confirmed", receipt);
+
+          const localReceipt = await web3.eth.getTransactionReceipt(receipt.transactionHash);
+
+          let localProxyAddress = hexStripZeros(localReceipt.logs[0].data);
+          console.log('Proxy Address:', localProxyAddress);
+        });
       }
     }
     init();

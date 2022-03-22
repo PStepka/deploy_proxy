@@ -16,7 +16,9 @@ const createWallet = (gnosisFactory, safeMasterCopy, owner) => {
     ).encodeABI();
 
     // Create Proxy
-    const tx = gnosisFactory.methods.createProxy(config.gnosis.safeMasterCopy.address, creationData).send({from: owner});
+    const saltNonce = Date.now();
+
+    const tx = gnosisFactory.methods.createProxyWithNonce(config.gnosis.safeMasterCopy.address, creationData, saltNonce).send({from: owner});
     return tx;
 }
 
